@@ -30,10 +30,12 @@ def fetch_soup(url: str) -> BeautifulSoup:
 
 # ── City News ──────────────────────────────────────────────────────────
 
-def scrape_city_news(base_url: str) -> list[ScrapedItem]:
+def scrape_city_news(base_url: str, max_items: int = 10) -> list[ScrapedItem]:
     soup = fetch_soup(f"{base_url}/news")
     items = []
     for article in soup.select("article, .news-item, .article, [class*=news]"):
+        if len(items) >= max_items:
+            break
         title_el = article.select_one("h2, h3, .title, a[href*='/news']")
         if not title_el:
             continue
@@ -239,11 +241,13 @@ def scrape_pgusd_board(base_url: str) -> list[ScrapedItem]:
 
 # ── Library Homepage ───────────────────────────────────────────────────
 
-def scrape_library(base_url: str) -> list[ScrapedItem]:
+def scrape_library(base_url: str, max_items: int = 10) -> list[ScrapedItem]:
     soup = fetch_soup(base_url)
     items = []
 
     for article in soup.select("article, .news-item, .post, [class*=news]"):
+        if len(items) >= max_items:
+            break
         title_el = article.select_one("h2, h3, a, .title")
         if not title_el:
             continue
@@ -280,11 +284,13 @@ def scrape_library(base_url: str) -> list[ScrapedItem]:
 
 # ── Chamber Events ─────────────────────────────────────────────────────
 
-def scrape_chamber_events(base_url: str) -> list[ScrapedItem]:
+def scrape_chamber_events(base_url: str, max_items: int = 30) -> list[ScrapedItem]:
     soup = fetch_soup(f"{base_url}/events")
     items = []
 
     for event in soup.select("[class*=event], .calendar-event, .event-item, .mn-event-list-item"):
+        if len(items) >= max_items:
+            break
         title_el = event.select_one("a, .title, .event-title")
         if not title_el:
             continue
