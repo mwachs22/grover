@@ -31,12 +31,13 @@ class GhostPublisher:
         return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
 
     def _token(self) -> str:
-        id_, secret = self.admin_api_key.split(":")
+        id_, secret_b64 = self.admin_api_key.split(":")
+        secret = base64.urlsafe_b64decode(secret_b64)
         iat = int(time.time())
         header = self._base64_encode(json.dumps({"alg": "HS256", "kid": id_, "typ": "JWT"}).encode())
         payload = self._base64_encode(json.dumps({"iat": iat, "exp": iat + 5 * 60, "aud": "/admin/"}).encode())
         sig = self._base64_encode(
-            hmac.new(secret.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest()
+            hmac.new(secret, f"{header}.{payload}".encode(), hashlib.sha256).digest()
         )
         return f"{header}.{payload}.{sig}"
 
