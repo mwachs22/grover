@@ -26,7 +26,9 @@ class GhostPublisher:
             raise ValueError("GHOST_API_URL and GHOST_ADMIN_API_KEY must be set")
 
     def _token(self) -> str:
-        id_, secret = self.admin_api_key.split(":")
+        import base64
+        id_, secret_b64 = self.admin_api_key.split(":")
+        secret = base64.urlsafe_b64decode(secret_b64)
         iat = int(time.time())
         payload = {"iat": iat, "exp": iat + 5 * 60, "aud": "/admin/"}
         return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": id_, "typ": "JWT"})

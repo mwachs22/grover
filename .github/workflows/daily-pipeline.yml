@@ -49,6 +49,18 @@ jobs:
           playwright install chromium
           playwright install-deps
 
+      - name: Debug Ghost connection
+        env:
+          GHOST_API_URL: ${{ secrets.GHOST_API_URL }}
+          GHOST_ADMIN_API_KEY: ${{ secrets.GHOST_ADMIN_API_KEY }}
+        run: |
+          echo "Ghost URL starts with: ${GHOST_API_URL:0:20}..."
+          echo "Testing connection..."
+          curl -s -o /dev/null -w "%{http_code}" "$GHOST_API_URL/ghost/api/admin/posts/" -H "Accept-Version: v5.0" || echo "Connection failed (expected without auth)"
+          echo ""
+          echo "Ghost URL length: ${#GHOST_API_URL}"
+          echo "Key parts: $(echo $GHOST_ADMIN_API_KEY | awk -F: '{print NF-1}' ) colon(s)"
+
       - name: Run Grover pipeline
         env:
           GHOST_API_URL: ${{ secrets.GHOST_API_URL }}
