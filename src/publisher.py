@@ -4,13 +4,15 @@ Creates posts in Ghost via the Admin API. Handles deduplication
 by checking for existing posts with matching source URLs.
 """
 
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
 import time
 from typing import Optional
 
-import jwt
 import requests
 
 from src.models import Story
@@ -26,12 +28,28 @@ class GhostPublisher:
             raise ValueError("GHOST_API_URL and GHOST_ADMIN_API_KEY must be set")
 
     def _token(self) -> str:
-        import base64
         id_, secret_b64 = self.admin_api_key.split(":")
-        secret = base64.urlsafe_b64decode(secret_b64)
+        secret_bytes = base64.b64decode(secret_b64)
+
         iat = int(time.time())
-        payload = {"iat": iat, "exp": iat + 5 * 60, "aud": "/admin/"}
-        return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": id_, "typ": "JWT"})
+        header = {
+            "alg": "HS256",
+            "kid": id_,
+            "typ": "JWT",
+        }
+        body = {
+            "iat": iat,
+            "exp": iat + 5 * 60,
+            "aud": "/admin/",
+        }
+
+        header_b64 = base64.urlsafe_b64encode(json.dumps(header).encode()).rstrip(b"=").decode()
+        body_b64 = base64.urlsafe_b64encode(json.dumps(body).encode()).rstrip(b"=").decode()
+        sig = base64.urlsafe_b64encode(
+            hmac.new(secret_bytes, f"{header_b64}.{body_b64}".encode(), hashlib.sha256).digest()
+        ).rstrip(b"=").decode()
+
+        return f"{header_b64}.{body_b64}.{sig}"
 
     def _headers(self) -> dict:
         return {

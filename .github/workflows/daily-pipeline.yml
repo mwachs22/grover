@@ -54,12 +54,32 @@ jobs:
           GHOST_API_URL: ${{ secrets.GHOST_API_URL }}
           GHOST_ADMIN_API_KEY: ${{ secrets.GHOST_ADMIN_API_KEY }}
         run: |
-          echo "Ghost URL starts with: ${GHOST_API_URL:0:20}..."
-          echo "Testing connection..."
-          curl -s -o /dev/null -w "%{http_code}" "$GHOST_API_URL/ghost/api/admin/posts/" -H "Accept-Version: v5.0" || echo "Connection failed (expected without auth)"
+          echo "Ghost URL: ${GHOST_API_URL}"
+          echo "Testing unauthenticated GET..."
+          curl -s -D - "$GHOST_API_URL/ghost/api/admin/posts/" -H "Accept-Version: v5.0" -o /dev/null 2>&1 | head -20
           echo ""
-          echo "Ghost URL length: ${#GHOST_API_URL}"
-          echo "Key parts: $(echo $GHOST_ADMIN_API_KEY | awk -F: '{print NF-1}' ) colon(s)"
+          echo "Key length: ${#GHOST_ADMIN_API_KEY}"
+          KEY_PART2=$(echo $GHOST_ADMIN_API_KEY | cut -d: -f2)
+          echo "Secret length: ${#KEY_PART2}"
+          # Try basic auth with admin key to confirm key is valid
+          python3 -c "
+import base64, hashlib, hmac, json, time
+id_, secret_b64 = '$GHOST_ADMIN_API_KEY'.split(':')
+secret = base64.b64decode(secret_b64)
+print(f'Decoded secret bytes: {len(secret)}')
+# Try both base64 and hex
+secret_hex = bytes.fromhex(secret_b64)
+print(f'Hex decoded bytes: {len(secret_hex)}')
+# Generate test token both ways
+for label, s in [('base64', secret), ('hex', secret_hex)]:
+    if len(s) < 10: continue
+    h = base64.urlsafe_b64encode(json.dumps({'alg':'HS256','kid':id_,'typ':'JWT'}).encode()).rstrip(b'=').decode()
+    b = base64.urlsafe_b64encode(json.dumps({'iat':int(time.time()),'exp':int(time.time())+300,'aud':'/admin/'}).encode()).rstrip(b'=').decode()
+    sig = base64.urlsafe_b64encode(hmac.new(s, f'{h}.{b}'.encode(), hashlib.sha256).digest()).rstrip(b'=').decode()
+    token = f'{h}.{b}.{sig}'
+    r = __import__('requests').get('$GHOST_API_URL/ghost/api/admin/posts/', headers={'Authorization': f'Ghost {token}', 'Content-Type':'application/json','Accept-Version':'v5.0'}, timeout=10)
+    print(f'{label}: HTTP {r.status_code} ({len(s)} bytes)')
+"
 
       - name: Run Grover pipeline
         env:
