@@ -9,3 +9,4 @@ build/
 credentials/
 *.json
 !service-account-template.json
+.DS_Store
