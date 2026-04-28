@@ -1,0 +1,65 @@
+name: Grover Daily Pipeline
+
+on:
+  schedule:
+    # 1:00 PM UTC = 6:00 AM Pacific (standard time)
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (no publish)"
+        type: boolean
+        default: false
+      enable_gmail:
+        description: "Enable Gmail reader"
+        type: boolean
+        default: true
+      enable_youtube:
+        description: "Enable YouTube"
+        type: boolean
+        default: true
+      enable_web:
+        description: "Enable web scrapers"
+        type: boolean
+        default: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  LOG_LEVEL: INFO
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps
+
+      - name: Run Grover pipeline
+        env:
+          GHOST_API_URL: ${{ secrets.GHOST_API_URL }}
+          GHOST_ADMIN_API_KEY: ${{ secrets.GHOST_ADMIN_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          LOG_LEVEL: ${{ env.LOG_LEVEL }}
+        run: |
+          ARGS=""
+          if [[ "${{ github.event.inputs.dry_run || 'false' }}" == "true" ]]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python -m src.pipeline $ARGS
