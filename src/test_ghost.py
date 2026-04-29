@@ -1,5 +1,6 @@
 """Debug script to test Ghost Admin API authentication.
 
+Tests multiple JWT signing approaches against the live Ghost API.
 Run: python -m src.test_ghost
 """
 import base64
@@ -19,9 +20,7 @@ GHOST_API_URL = os.getenv("GHOST_API_URL", "").rstrip("/")
 GHOST_ADMIN_API_KEY = os.getenv("GHOST_ADMIN_API_KEY", "")
 
 
-def _token() -> str:
-    id_, secret_b64 = GHOST_ADMIN_API_KEY.split(":")
-    secret_bytes = base64.b64decode(secret_b64)
+def make_token(id_: str, secret_bytes: bytes) -> str:
     iat = int(time.time())
     header_b64 = base64.urlsafe_b64encode(
         json.dumps({"alg": "HS256", "kid": id_, "typ": "JWT"}).encode()
@@ -35,41 +34,80 @@ def _token() -> str:
     return f"{header_b64}.{body_b64}.{sig}"
 
 
-def main():
-    logger.info(f"GHOST_API_URL: {GHOST_API_URL}")
-    logger.info(f"Key format: {GHOST_ADMIN_API_KEY.count(':')} colon(s)")
-
-    id_part, secret_part = GHOST_ADMIN_API_KEY.split(":")
-    logger.info(f"Key ID: {id_part}")
-    logger.info(f"Secret part length: {len(secret_part)}")
-
-    # Try decoding as base64
-    try:
-        decoded = base64.b64decode(secret_part)
-        logger.info(f"b64 decoded: {len(decoded)} bytes")
-    except Exception as e:
-        logger.error(f"b64 decode failed: {e}")
-
-    # Try decoding as urlsafe base64
-    try:
-        decoded = base64.urlsafe_b64decode(secret_part + "==")
-        logger.info(f"b64 urlsafe decoded: {len(decoded)} bytes")
-    except Exception as e:
-        logger.error(f"b64 urlsafe decode failed: {e}")
-
-    # Test token
-    token = _token()
-    logger.info(f"Token: {token[:100]}...")
-
-    # Test request
+def test_auth(label: str, id_: str, secret_bytes: bytes):
+    token = make_token(id_, secret_bytes)
     headers = {
         "Authorization": f"Ghost {token}",
         "Content-Type": "application/json",
         "Accept-Version": "v5.0",
     }
-    resp = requests.get(f"{GHOST_API_URL}/ghost/api/admin/posts/", headers=headers, timeout=10)
-    logger.info(f"Response: HTTP {resp.status_code}")
-    logger.info(f"Body: {resp.text[:500]}")
+    try:
+        resp = requests.get(f"{GHOST_API_URL}/ghost/api/admin/posts/", headers=headers, timeout=10)
+        logger.info(f"  [{label}] HTTP {resp.status_code} (secret: {len(secret_bytes)} bytes)")
+        if resp.status_code == 200:
+            logger.info(f"  *** THIS APPROACH WORKS ***")
+            return True
+    except Exception as e:
+        logger.error(f"  [{label}] Error: {e}")
+    return False
+
+
+def main():
+    logger.info(f"Ghost URL: {GHOST_API_URL}")
+
+    # Verify URL is reachable at all
+    try:
+        r = requests.get(f"{GHOST_API_URL}/ghost/api/admin/posts/", timeout=10,
+                         headers={"Accept-Version": "v5.0"})
+        logger.info(f"Unauthenticated GET: HTTP {r.status_code}")
+    except Exception as e:
+        logger.error(f"Cannot reach Ghost URL: {e}")
+        return
+
+    id_part, secret_part = GHOST_ADMIN_API_KEY.split(":")
+    logger.info(f"Key ID: {id_part}")
+    logger.info(f"Secret string length: {len(secret_part)}")
+    logger.info(f"Secret string: {secret_part[:20]}...{secret_part[-20:]}")
+
+    # Approach 1: base64 decode (standard)
+    try:
+        s1 = base64.b64decode(secret_part)
+        logger.info(f"Approach 1 - b64decode: {len(s1)} bytes")
+        test_auth("b64decode", id_part, s1)
+    except Exception as e:
+        logger.error(f"  b64decode failed: {e}")
+
+    # Approach 2: base64 urlsafe decode
+    try:
+        padding = 4 - len(secret_part) % 4
+        if padding != 4:
+            s2 = base64.urlsafe_b64decode(secret_part + "=" * padding)
+        else:
+            s2 = base64.urlsafe_b64decode(secret_part)
+        logger.info(f"Approach 2 - urlsafe: {len(s2)} bytes")
+        test_auth("urlsafe", id_part, s2)
+    except Exception as e:
+        logger.error(f"  urlsafe decode failed: {e}")
+
+    # Approach 3: hex decode (32 bytes)
+    try:
+        s3 = bytes.fromhex(secret_part)
+        logger.info(f"Approach 3 - hex: {len(s3)} bytes")
+        test_auth("hex", id_part, s3)
+    except Exception as e:
+        logger.error(f"  hex decode failed: {e}")
+
+    # Approach 4: use raw string (no decode)
+    test_auth("raw_string", id_part, secret_part.encode("utf-8"))
+
+    # Approach 5: Ghost v5 uses standard base64 without padding, decode with b64decode
+    try:
+        import base64 as b64mod
+        s5 = b64mod.b64decode(secret_part)
+        logger.info(f"Approach 5 - stdlib b64: {len(s5)} bytes")
+        test_auth("stdlib_b64", id_part, s5)
+    except Exception as e:
+        logger.error(f"  stdlib b64 failed: {e}")
 
 
 if __name__ == "__main__":
