@@ -74,15 +74,43 @@ class GhostPublisher:
         return None
 
     def publish(self, story: Story) -> Optional[str]:
-        if story.classified.scraped.url:
-            existing_id = self.post_exists(story.classified.scraped.url)
-            if existing_id:
-                story.ghost_id = existing_id
-                story.published = True
-                return existing_id
-
         body_html = self._build_body(story)
         status = "draft" if story.classified.is_major else "published"
+
+        existing_id = None
+        if story.classified.scraped.url:
+            existing_id = self.post_exists(story.classified.scraped.url)
+
+        if existing_id:
+            data = {
+                "posts": [{
+                    "title": story.headline,
+                    "html": body_html,
+                    "excerpt": story.excerpt[:300],
+                    "status": status,
+                    "tags": [{"name": t} for t in story.classified.tags],
+                    "codeinjection_head": (
+                        f'<meta name="grover-source-url" content="{story.classified.scraped.url or ""}">\n'
+                        f'<meta name="grover-source" content="{story.classified.scraped.source}">'
+                    ),
+                }]
+            }
+            resp = requests.put(
+                f"{self.api_url}/ghost/api/admin/posts/{existing_id}/",
+                headers=self._headers(),
+                json=data,
+                timeout=30,
+            )
+            if resp.status_code in (200, 201):
+                result = resp.json()["posts"][0]
+                story.ghost_id = result["id"]
+                story.ghost_url = result.get("url")
+                story.published = status == "published"
+                logger.info(f"Updated: {story.headline} (id={result['id']})")
+                return result["id"]
+            else:
+                logger.error(f"Ghost API PUT error ({resp.status_code}): {resp.text[:300]}")
+                return None
 
         data = {
             "posts": [{

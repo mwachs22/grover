@@ -58,15 +58,15 @@ class Summarizer:
             result_text = response.choices[0].message.content or ""
             result = self._parse_response(result_text)
             if not result:
+                logger.warning(f"Parse fail for '{item.scraped.title}'. Raw: {result_text[:400]}")
                 return None
         except Exception as e:
             logger.error(f"LLM call failed for '{item.scraped.title}': {e}")
             return None
 
-        body = result.get("body_html") or ""
+        body = result.get("body_html") or result.get("html") or result.get("body") or ""
         if not body.strip():
             body = f"<p>{item.scraped.excerpt or item.scraped.body_text or ''}</p>"
-            logger.warning(f"Empty body_html for '{item.scraped.title}'. LLM returned: {json.dumps(result)[:300]}")
 
         if not result.get("headline"):
             logger.warning(f"Empty headline for '{item.scraped.title}'. LLM returned: {json.dumps(result)[:300]}")
