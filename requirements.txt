@@ -6,6 +6,6 @@ playwright>=1.44
 google-api-python-client>=2.130
 google-auth-oauthlib>=1.2
 google-auth-httplib2>=0.2
-anthropic>=0.34
+openai>=1.0
 PyYAML>=6.0
 

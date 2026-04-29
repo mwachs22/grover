@@ -1,7 +1,8 @@
-"""Claude-powered summarizer that transforms raw content into newspaper stories.
+"""LLM-powered summarizer that transforms raw content into newspaper stories.
 
-Calls Anthropic API with a structured prompt to generate headlines,
-HTML body, excerpt, and classification.
+Uses OpenAI-compatible API (Ollama, DeepSeek, etc.) to generate headlines,
+HTML body, excerpt, and classification. Configure via OLLAMA_API_KEY and
+OLLAMA_BASE_URL environment variables.
 """
 
 import json
@@ -13,22 +14,31 @@ from typing import Optional
 from urllib.parse import urljoin
 
 import requests
-from anthropic import Anthropic
 from bs4 import BeautifulSoup
+from openai import OpenAI
 
 from src.config import SYSTEM_PROMPT
 from src.models import ClassifiedItem, ScrapedItem, Story
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MODEL = "deepseek-v4-flash"
+DEFAULT_BASE_URL = "https://ollama.com/v1"
+
 
 class Summarizer:
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514"):
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: Optional[str] = None,
+    ):
+        self.api_key = api_key or os.getenv("OLLAMA_API_KEY")
+        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+        self.model = model or os.getenv("OLLAMA_MODEL") or DEFAULT_MODEL
         if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not set")
-        self.client = Anthropic(api_key=self.api_key)
-        self.model = model
+            raise ValueError("OLLAMA_API_KEY not set")
+        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
 
     def summarize(self, item: ClassifiedItem) -> Optional[Story]:
         content = self._build_prompt(item.scraped)
@@ -36,24 +46,31 @@ class Summarizer:
             return None
 
         try:
-            response = self.client.messages.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 max_tokens=1024,
                 temperature=0.3,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": content}],
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": content},
+                ],
             )
-            result = self._parse_response(response)
+            result_text = response.choices[0].message.content or ""
+            result = self._parse_response(result_text)
             if not result:
                 return None
         except Exception as e:
             logger.error(f"LLM call failed for '{item.scraped.title}': {e}")
             return None
 
+        body = result.get("body_html") or ""
+        if not body.strip():
+            body = f"<p>{item.scraped.excerpt or item.scraped.body_text or ''}</p>"
+
         return Story(
             classified=item,
             headline=result.get("headline", item.scraped.title),
-            body=result.get("body_html", f"<p>{item.scraped.excerpt or ''}</p>"),
+            body=body,
             excerpt=result.get("excerpt", item.scraped.excerpt or ""),
         )
 
@@ -99,9 +116,9 @@ class Summarizer:
             parts.append(f"Date: {item.published_at.isoformat()}")
         return "\n\n".join(parts)
 
-    def _parse_response(self, response) -> Optional[dict]:
+    def _parse_response(self, text: str) -> Optional[dict]:
         try:
-            text = response.content[0].text.strip()
+            text = text.strip()
             if text.startswith("```"):
                 text = text.split("\n", 1)[-1]
                 text = text.rsplit("```", 1)[0]
