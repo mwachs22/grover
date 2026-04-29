@@ -143,7 +143,11 @@ class GhostPublisher:
             story.ghost_url = result.get("url")
             story.published = status == "published"
             verb = "Updated" if existing_id else ("Published" if story.published else "Drafted")
-            logger.info(f"{verb}: {story.headline} (id={result['id']})")
+            stored_html = (result.get("html") or "").strip()
+            logger.info(f"{verb}: {story.headline} (id={result['id']}, stored_html_len={len(stored_html)})")
+            if len(stored_html) < 20:
+                logger.warning(f"GHOST_STORED_EMPTY for '{story.headline}'. Sent body was '{body_html[:300]}'")
+                logger.info(f"Ghost response keys for post: {list(result.keys())}")
             return result["id"]
         else:
             logger.error(f"Ghost API error ({resp.status_code}): {resp.text[:500]}")
