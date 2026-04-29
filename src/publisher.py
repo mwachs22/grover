@@ -83,6 +83,10 @@ class GhostPublisher:
         body_html = self._build_body(story)
         status = "draft" if story.classified.is_major else "published"
 
+        logger.info(f"SENDING '{story.headline}': body_html len={len(body_html)}")
+        if len(body_html.strip()) < 20:
+            logger.warning(f"BODY_TOO_SHORT (len={len(body_html)}): {body_html}")
+
         data = {
             "posts": [{
                 "title": story.headline,
