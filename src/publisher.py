@@ -79,6 +79,28 @@ class GhostPublisher:
         self._existing_posts_cache = cache
         return cache
 
+    def _html_to_mobiledoc(self, html: str) -> str:
+        """Convert simple HTML to Ghost mobiledoc format."""
+        import re
+        sections = []
+        for p in re.findall(r'<p[^>]*>(.*?)</p>', html, re.DOTALL):
+            sections.append([1, "p", [[0, [], 0, p]]])
+        for h2 in re.findall(r'<h2[^>]*>(.*?)</h2>', html, re.DOTALL):
+            sections.append([1, "h2", [[0, [], 0, h2]]])
+        for h3 in re.findall(r'<h3[^>]*>(.*?)</h3>', html, re.DOTALL):
+            sections.append([1, "h3", [[0, [], 0, h3]]])
+        if not sections:
+            text = re.sub(r'<[^>]+>', '', html).strip()
+            if text:
+                sections.append([1, "p", [[0, [], 0, text]]])
+        return json.dumps({
+            "version": "0.3.1",
+            "atoms": [],
+            "cards": [],
+            "markups": [],
+            "sections": sections,
+        })
+
     def publish(self, story: Story) -> Optional[str]:
         body_html = self._build_body(story)
         status = "draft" if story.classified.is_major else "published"
@@ -87,10 +109,14 @@ class GhostPublisher:
         if len(body_html.strip()) < 20:
             logger.warning(f"BODY_TOO_SHORT (len={len(body_html)}): {body_html}")
 
+        # Ghost v5+ requires mobiledoc alongside html for body content to persist
+        mobiledoc = self._html_to_mobiledoc(body_html)
+
         data = {
             "posts": [{
                 "title": story.headline,
                 "html": body_html,
+                "mobiledoc": mobiledoc,
                 "excerpt": story.excerpt[:300],
                 "status": status,
                 "tags": [{"name": t} for t in story.classified.tags],
