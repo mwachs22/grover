@@ -7,10 +7,14 @@ HTML body, excerpt, and classification.
 import json
 import logging
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
+from urllib.parse import urljoin
 
+import requests
 from anthropic import Anthropic
+from bs4 import BeautifulSoup
 
 from src.config import SYSTEM_PROMPT
 from src.models import ClassifiedItem, ScrapedItem, Story
@@ -53,6 +57,22 @@ class Summarizer:
             excerpt=result.get("excerpt", item.scraped.excerpt or ""),
         )
 
+    def _fetch_url_text(self, url: str) -> Optional[str]:
+        try:
+            resp = requests.get(url, timeout=15, headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Grover/0.1"
+            })
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "lxml")
+            for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            text = re.sub(r"\n{3,}", "\n\n", text)
+            return text[:3000]
+        except Exception as e:
+            logger.debug(f"Failed to fetch URL {url}: {e}")
+            return None
+
     def summarize_batch(self, items: list[ClassifiedItem], max_workers: int = 5) -> list[Story]:
         stories = []
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -71,6 +91,10 @@ class Summarizer:
             parts.append(f"Body:\n{item.body_text[:3000]}")
         elif item.excerpt:
             parts.append(f"Excerpt:\n{item.excerpt}")
+        elif item.url:
+            fetched = self._fetch_url_text(item.url)
+            if fetched:
+                parts.append(f"Page content:\n{fetched}")
         if item.published_at:
             parts.append(f"Date: {item.published_at.isoformat()}")
         return "\n\n".join(parts)
