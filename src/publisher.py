@@ -174,6 +174,8 @@ class GhostPublisher:
             if len(stored_html) < 20:
                 logger.warning(f"GHOST_STORED_EMPTY for '{story.headline}'. Sent body was '{body_html[:300]}'")
                 logger.info(f"Ghost response keys for post: {list(result.keys())}")
+                logger.info(f"Ghost response mobiledoc: {(result.get('mobiledoc') or 'null')[:200]}")
+                logger.info(f"Ghost response lexical: {(result.get('lexical') or 'null')[:200]}")
             return result["id"]
         else:
             logger.error(f"Ghost API error ({resp.status_code}): {resp.text[:500]}")
