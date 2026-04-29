@@ -66,6 +66,10 @@ class Summarizer:
         body = result.get("body_html") or ""
         if not body.strip():
             body = f"<p>{item.scraped.excerpt or item.scraped.body_text or ''}</p>"
+            logger.warning(f"Empty body_html for '{item.scraped.title}'. LLM returned: {json.dumps(result)[:300]}")
+
+        if not result.get("headline"):
+            logger.warning(f"Empty headline for '{item.scraped.title}'. LLM returned: {json.dumps(result)[:300]}")
 
         return Story(
             classified=item,
