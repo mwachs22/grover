@@ -83,6 +83,22 @@ class GhostPublisher:
         body_html = self._build_body(story)
         status = "draft" if story.classified.is_major else "published"
 
+        data = {
+            "posts": [{
+                "title": story.headline,
+                "html": body_html,
+                "excerpt": story.excerpt[:300],
+                "status": status,
+                "tags": [{"name": t} for t in story.classified.tags],
+                "meta_title": story.headline[:70],
+                "meta_description": story.excerpt[:160],
+                "codeinjection_head": (
+                    f'<meta name="grover-source-url" content="{story.classified.scraped.url or ""}">\n'
+                    f'<meta name="grover-source" content="{story.classified.scraped.source}">'
+                ),
+            }]
+        }
+
         existing_id = None
         existing_cache = self._load_existing()
         url_meta = f'content="{story.classified.scraped.url or ""}"'
