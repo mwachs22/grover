@@ -64,6 +64,12 @@ class Summarizer:
             logger.error(f"LLM call failed for '{item.scraped.title}': {e}")
             return None
 
+        # Debug: log first item's raw output to understand format
+        if not hasattr(self, '_logged_raw'):
+            self._logged_raw = True
+            logger.info(f"RAW_LLM_KEYS for '{item.scraped.title}': {list(result.keys())}")
+            logger.info(f"RAW_LLM_PREVIEW: {json.dumps(result)[:600]}")
+
         body = result.get("body_html") or result.get("html") or result.get("body") or ""
         if not body.strip():
             body = f"<p>{item.scraped.excerpt or item.scraped.body_text or ''}</p>"
