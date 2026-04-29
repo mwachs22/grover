@@ -28,9 +28,11 @@ class GhostPublisher:
             raise ValueError("GHOST_API_URL and GHOST_ADMIN_API_KEY must be set")
 
     def _token(self) -> str:
-        id_, secret_b64 = self.admin_api_key.split(":")
-        secret_bytes = base64.b64decode(secret_b64)
-
+        id_, secret_part = self.admin_api_key.split(":")
+        try:
+            secret_bytes = bytes.fromhex(secret_part)
+        except ValueError:
+            secret_bytes = base64.b64decode(secret_part)
         iat = int(time.time())
         header = {
             "alg": "HS256",
