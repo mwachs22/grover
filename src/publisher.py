@@ -79,26 +79,42 @@ class GhostPublisher:
         self._existing_posts_cache = cache
         return cache
 
-    def _html_to_mobiledoc(self, html: str) -> str:
-        """Convert simple HTML to Ghost mobiledoc format."""
+    def _html_to_lexical(self, html: str) -> str:
+        """Convert simple HTML to Ghost lexical JSON format."""
         import re
-        sections = []
-        for p in re.findall(r'<p[^>]*>(.*?)</p>', html, re.DOTALL):
-            sections.append([1, "p", [[0, [], 0, p]]])
-        for h2 in re.findall(r'<h2[^>]*>(.*?)</h2>', html, re.DOTALL):
-            sections.append([1, "h2", [[0, [], 0, h2]]])
-        for h3 in re.findall(r'<h3[^>]*>(.*?)</h3>', html, re.DOTALL):
-            sections.append([1, "h3", [[0, [], 0, h3]]])
-        if not sections:
+        children = []
+        for tag, content in re.findall(r'<(p|h2|h3)[^>]*>(.*?)</\1>', html, re.DOTALL):
+            node_type = "paragraph" if tag == "p" else f"heading"
+            tag_name = tag
+            children.append({
+                "type": node_type,
+                "tag": tag_name,
+                "children": [{"text": content.strip()}],
+                "direction": None,
+                "format": 0,
+                "indent": 0,
+                "version": 1,
+            })
+        if not children:
             text = re.sub(r'<[^>]+>', '', html).strip()
             if text:
-                sections.append([1, "p", [[0, [], 0, text]]])
+                children.append({
+                    "type": "paragraph",
+                    "children": [{"text": text}],
+                    "direction": None,
+                    "format": 0,
+                    "indent": 0,
+                    "version": 1,
+                })
         return json.dumps({
-            "version": "0.3.1",
-            "atoms": [],
-            "cards": [],
-            "markups": [],
-            "sections": sections,
+            "root": {
+                "children": children,
+                "direction": None,
+                "format": "",
+                "indent": 0,
+                "type": "root",
+                "version": 2,
+            }
         })
 
     def publish(self, story: Story) -> Optional[str]:
@@ -109,14 +125,13 @@ class GhostPublisher:
         if len(body_html.strip()) < 20:
             logger.warning(f"BODY_TOO_SHORT (len={len(body_html)}): {body_html}")
 
-        # Ghost v5+ requires mobiledoc alongside html for body content to persist
-        mobiledoc = self._html_to_mobiledoc(body_html)
+        lexical_json = self._html_to_lexical(body_html)
 
         data = {
             "posts": [{
                 "title": story.headline,
                 "html": body_html,
-                "mobiledoc": mobiledoc,
+                "lexical": lexical_json,
                 "excerpt": story.excerpt[:300],
                 "status": status,
                 "tags": [{"name": t} for t in story.classified.tags],
