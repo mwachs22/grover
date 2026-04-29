@@ -56,3 +56,16 @@ jobs:
         run: python -m src.test_ghost
 
       - name: Run Grover pipeline
+        env:
+          GHOST_API_URL: ${{ secrets.GHOST_API_URL }}
+          GHOST_ADMIN_API_KEY: ${{ secrets.GHOST_ADMIN_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          LOG_LEVEL: ${{ env.LOG_LEVEL }}
+        run: |
+          ARGS=""
+          if [[ "${{ github.event.inputs.dry_run || 'false' }}" == "true" ]]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python -m src.pipeline $ARGS
